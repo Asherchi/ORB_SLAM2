@@ -523,8 +523,8 @@ int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 {
     const vector<cv::KeyPoint> &vKeysUn1 = pKF1->mvKeysUn;
     const DBoW2::FeatureVector &vFeatVec1 = pKF1->mFeatVec;
-    const vector<MapPoint*> vpMapPoints1 = pKF1->GetMapPointMatches();
-    const cv::Mat &Descriptors1 = pKF1->mDescriptors;
+    const vector<MapPoint*> vpMapPoints1 = pKF1->GetMapPointMatches();  // 这个是获取这一帧的所有的 3D 点 
+    const cv::Mat &Descriptors1 = pKF1->mDescriptors;  // BRISK sift surf 等描述子
 
     const vector<cv::KeyPoint> &vKeysUn2 = pKF2->mvKeysUn;
     const DBoW2::FeatureVector &vFeatVec2 = pKF2->mFeatVec;
@@ -549,7 +549,7 @@ int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
     while(f1it != f1end && f2it != f2end)
     {
-        if(f1it->first == f2it->first)
+        if(f1it->first == f2it->first)  // 如果是 dbow的同一个节点 
         {
             for(size_t i1=0, iend1=f1it->second.size(); i1<iend1; i1++)
             {
@@ -581,11 +581,11 @@ int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
 
                     const cv::Mat &d2 = Descriptors2.row(idx2);
 
-                    int dist = DescriptorDistance(d1,d2);
+                    int dist = DescriptorDistance(d1,d2);  // 对应的图像的描述子计算距离 
 
                     if(dist<bestDist1)
                     {
-                        bestDist2=bestDist1;
+                        bestDist2=bestDist1;  // bestDist1 最优的  bestDist2 次优
                         bestDist1=dist;
                         bestIdx2=idx2;
                     }
@@ -595,9 +595,9 @@ int ORBmatcher::SearchByBoW(KeyFrame *pKF1, KeyFrame *pKF2, vector<MapPoint *> &
                     }
                 }
 
-                if(bestDist1<TH_LOW)
+                if(bestDist1<TH_LOW) // TH_LOW = 50
                 {
-                    if(static_cast<float>(bestDist1)<mfNNratio*static_cast<float>(bestDist2))
+                    if(static_cast<float>(bestDist1)<mfNNratio*static_cast<float>(bestDist2)) // 非极大值抑制？
                     {
                         vpMatches12[idx1]=vpMapPoints2[bestIdx2];
                         vbMatched2[bestIdx2]=true;
@@ -1008,14 +1008,14 @@ int ORBmatcher::Fuse(KeyFrame *pKF, cv::Mat Scw, const vector<MapPoint *> &vpPoi
         // Get 3D Coords.
         cv::Mat p3Dw = pMP->GetWorldPos();
 
-        // Transform into Camera Coords.
+        // Transform into Camera Coords. // 这个为什么感觉不太对啊  应该是转换到世界坐标系吧 因为 Tcw 是 cams to world 
         cv::Mat p3Dc = Rcw*p3Dw+tcw;
 
         // Depth must be positive
         if(p3Dc.at<float>(2)<0.0f)
             continue;
 
-        // Project into Image
+        // Project into Image  // 根据相机参数投影到图像平面
         const float invz = 1.0/p3Dc.at<float>(2);
         const float x = p3Dc.at<float>(0)*invz;
         const float y = p3Dc.at<float>(1)*invz;
@@ -1023,7 +1023,7 @@ int ORBmatcher::Fuse(KeyFrame *pKF, cv::Mat Scw, const vector<MapPoint *> &vpPoi
         const float u = fx*x+cx;
         const float v = fy*y+cy;
 
-        // Point must be inside the image
+        // Point must be inside the image  这一点必须在图像平面内
         if(!pKF->IsInImage(u,v))
             continue;
 

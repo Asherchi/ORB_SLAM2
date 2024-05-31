@@ -161,7 +161,7 @@ public:
 
     // KeyPoints, stereo coordinate and descriptors (all associated by an index)
     const std::vector<cv::KeyPoint> mvKeys;
-    const std::vector<cv::KeyPoint> mvKeysUn;
+    const std::vector<cv::KeyPoint> mvKeysUn;  // 这个和上面这个变量的区别是啥
     const std::vector<float> mvuRight; // negative value for monocular points
     const std::vector<float> mvDepth; // negative value for monocular points
     const cv::Mat mDescriptors;
@@ -199,7 +199,7 @@ protected:
 
     cv::Mat Cw; // Stereo middel point. Only for visualization
 
-    // MapPoints associated to keypoints
+    // MapPoints associated to keypoints 应该是一帧关键帧包含了多个地图点
     std::vector<MapPoint*> mvpMapPoints;
 
     // BoW

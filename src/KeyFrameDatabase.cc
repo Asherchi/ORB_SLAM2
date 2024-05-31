@@ -77,7 +77,7 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
 {
     set<KeyFrame*> spConnectedKeyFrames = pKF->GetConnectedKeyFrames();
     list<KeyFrame*> lKFsSharingWords;
-
+    /* 查找与当前关键帧相关的的关键帧 */
     // Search all keyframes that share a word with current keyframes
     // Discard keyframes connected to the query keyframe
     {
@@ -110,6 +110,7 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     list<pair<float,KeyFrame*> > lScoreAndMatch;
 
     // Only compare against those keyframes that share enough words
+    // 仅与那些有足够多共同词汇的关键帧进行比较 阈值是 最大共识词的0.8倍
     int maxCommonWords=0;
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
@@ -117,11 +118,12 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
             maxCommonWords=(*lit)->mnLoopWords;
     }
 
-    int minCommonWords = maxCommonWords*0.8f;
+    int minCommonWords = maxCommonWords*0.8f;  // 最低的条件
 
     int nscores=0;
 
     // Compute similarity score. Retain the matches whose score is higher than minScore
+    // 这个比较不仅仅要大于上述的最大得分的0.8 还要高于当前帧的相邻帧的最小得分
     for(list<KeyFrame*>::iterator lit=lKFsSharingWords.begin(), lend= lKFsSharingWords.end(); lit!=lend; lit++)
     {
         KeyFrame* pKFi = *lit;
@@ -134,7 +136,7 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
 
             pKFi->mLoopScore = si;
             if(si>=minScore)
-                lScoreAndMatch.push_back(make_pair(si,pKFi));
+                lScoreAndMatch.push_back(make_pair(si,pKFi)); // lscoreAndMatch存放的分数和对应相关的关键帧
         }
     }
 
@@ -147,8 +149,8 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
     // Lets now accumulate score by covisibility
     for(list<pair<float,KeyFrame*> >::iterator it=lScoreAndMatch.begin(), itend=lScoreAndMatch.end(); it!=itend; it++)
     {
-        KeyFrame* pKFi = it->second;
-        vector<KeyFrame*> vpNeighs = pKFi->GetBestCovisibilityKeyFrames(10);
+        KeyFrame* pKFi = it->second;  // 这个是相关的关键帧
+        vector<KeyFrame*> vpNeighs = pKFi->GetBestCovisibilityKeyFrames(10);  // 获取上述关键帧 相邻最相关的10帧关键帧
 
         float bestScore = it->first;
         float accScore = it->first;
@@ -187,12 +189,12 @@ vector<KeyFrame*> KeyFrameDatabase::DetectLoopCandidates(KeyFrame* pKF, float mi
             if(!spAlreadyAddedKF.count(pKFi))
             {
                 vpLoopCandidates.push_back(pKFi);
-                spAlreadyAddedKF.insert(pKFi);
+                spAlreadyAddedKF.insert(pKFi);  // 为啥专门搞一个set去判断是否存在pkfi 可能是用空间换时间  Vector没有count的成员函数
             }
         }
     }
 
-
+    // 各种操作后筛选的结果 
     return vpLoopCandidates;
 }
 

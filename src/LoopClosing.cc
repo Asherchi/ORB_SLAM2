@@ -111,6 +111,7 @@ bool LoopClosing::DetectLoop()
     }
 
     //If the map contains less than 10 KF or less than 10 KF have passed from last loop detection
+    // 如果距离上次闭环没多久（小于10帧），或者map中关键帧总共还没有10帧，则不进行闭环检测
     if(mpCurrentKF->mnId<mLastLoopKFid+10)
     {
         mpKeyFrameDB->add(mpCurrentKF);
@@ -121,6 +122,7 @@ bool LoopClosing::DetectLoop()
     // Compute reference BoW similarity score
     // This is the lowest score to a connected keyframe in the covisibility graph
     // We will impose loop candidates to have a higher similarity than this
+    // 这一步需要遍历与当前有关的所有共视关键帧呢，计算他们之间的Bow相似度得分，并得到最低得分minScore 
     const vector<KeyFrame*> vpConnectedKeyFrames = mpCurrentKF->GetVectorCovisibleKeyFrames();
     const DBoW2::BowVector &CurrentBowVec = mpCurrentKF->mBowVec;
     float minScore = 1;
@@ -138,6 +140,7 @@ bool LoopClosing::DetectLoop()
     }
 
     // Query the database imposing the minimum score
+    // 和当前关键帧具有回环关系的关键帧,不应该低于当前关键帧的相邻关键帧的最低的相似度 且候选帧不应该孤立
     vector<KeyFrame*> vpCandidateKFs = mpKeyFrameDB->DetectLoopCandidates(mpCurrentKF, minScore);
 
     // If there are no loop candidates, just add new keyframe and return false
@@ -162,7 +165,7 @@ bool LoopClosing::DetectLoop()
         KeyFrame* pCandidateKF = vpCandidateKFs[i];
 
         set<KeyFrame*> spCandidateGroup = pCandidateKF->GetConnectedKeyFrames();
-        spCandidateGroup.insert(pCandidateKF);
+        spCandidateGroup.insert(pCandidateKF);  // 这样就作为一个组 去搜索是不是 连续的
 
         bool bEnoughConsistent = false;
         bool bConsistentForSomeGroup = false;
@@ -173,7 +176,7 @@ bool LoopClosing::DetectLoop()
             bool bConsistent = false;
             for(set<KeyFrame*>::iterator sit=spCandidateGroup.begin(), send=spCandidateGroup.end(); sit!=send;sit++)
             {
-                if(sPreviousGroup.count(*sit))
+                if(sPreviousGroup.count(*sit)) // 如果之前的一致性组 包含了当前的一帧 那么说明存在一致性 对应的参数设为True 
                 {
                     bConsistent=true;
                     bConsistentForSomeGroup=true;
@@ -185,7 +188,7 @@ bool LoopClosing::DetectLoop()
             {
                 int nPreviousConsistency = mvConsistentGroups[iG].second;
                 int nCurrentConsistency = nPreviousConsistency + 1;
-                if(!vbConsistentGroup[iG])
+                if(!vbConsistentGroup[iG]) // 前面一个v代表的是 Vector 后面一个b 代表的是 bool 
                 {
                     ConsistentGroup cg = make_pair(spCandidateGroup,nCurrentConsistency);
                     vCurrentConsistentGroups.push_back(cg);
@@ -261,17 +264,17 @@ bool LoopClosing::ComputeSim3()
             vbDiscarded[i] = true;
             continue;
         }
-
+        // vvpMapPointMatches 这是保存匹配的3D点 下面构建solver的时候 会使用到该3D匹配
         int nmatches = matcher.SearchByBoW(mpCurrentKF,pKF,vvpMapPointMatches[i]);
 
-        if(nmatches<20)
+        if(nmatches<20)  // 如果候选帧 与当前帧 的匹配数量低于20 直接丢弃
         {
             vbDiscarded[i] = true;
             continue;
         }
         else
         {
-            Sim3Solver* pSolver = new Sim3Solver(mpCurrentKF,pKF,vvpMapPointMatches[i],mbFixScale);
+            Sim3Solver* pSolver = new Sim3Solver(mpCurrentKF,pKF,vvpMapPointMatches[i],mbFixScale); // mbFixScale=False 单目的话
             pSolver->SetRansacParameters(0.99,20,300);
             vpSim3Solvers[i] = pSolver;
         }
@@ -306,7 +309,7 @@ bool LoopClosing::ComputeSim3()
                 vbDiscarded[i]=true;
                 nCandidates--;
             }
-
+            // solver迭代5次 不行就下一个
             // If RANSAC returns a Sim3, perform a guided matching and optimize with all correspondences
             if(!Scm.empty())
             {
@@ -315,8 +318,8 @@ bool LoopClosing::ComputeSim3()
                 {
                     if(vbInliers[j])
                        vpMapPointMatches[j]=vvpMapPointMatches[i][j];
-                }
-
+                }   
+                /* 下面是使用估计的sRt 再重新求一下匹配  因为存在尺度等问题 导致匹配的数量会比较少 然后求得新的匹配之后 再重新计算 sRt*/
                 cv::Mat R = pSolver->GetEstimatedRotation();
                 cv::Mat t = pSolver->GetEstimatedTranslation();
                 const float s = pSolver->GetEstimatedScale();
@@ -331,7 +334,7 @@ bool LoopClosing::ComputeSim3()
                     bMatch = true;
                     mpMatchedKF = pKF;
                     g2o::Sim3 gSmw(Converter::toMatrix3d(pKF->GetRotation()),Converter::toVector3d(pKF->GetTranslation()),1.0);
-                    mg2oScw = gScm*gSmw;
+                    mg2oScw = gScm*gSmw;  // 这个就是算当前帧的pose T12 * T回环的关键帧的pose 
                     mScw = Converter::toCvMat(mg2oScw);
 
                     mvpCurrentMatchedPoints = vpMapPointMatches;
@@ -370,7 +373,7 @@ bool LoopClosing::ComputeSim3()
             }
         }
     }
-
+    /* 投影到当前帧匹配 如果匹配成功的点数nTotalMatches大于40，说明完成了最后的考验，返回true */
     // Find more matches projecting with the computed Sim3
     matcher.SearchByProjection(mpCurrentKF, mScw, mvpLoopMapPoints, mvpCurrentMatchedPoints,10);
 
@@ -382,7 +385,7 @@ bool LoopClosing::ComputeSim3()
             nTotalMatches++;
     }
 
-    if(nTotalMatches>=40)
+    if(nTotalMatches>=40)  // 如果投影的点数大于等于40 认识是 sim3 求解成功 
     {
         for(int i=0; i<nInitialCandidates; i++)
             if(mvpEnoughConsistentCandidates[i]!=mpMatchedKF)
@@ -438,7 +441,13 @@ void LoopClosing::CorrectLoop()
     KeyFrameAndPose CorrectedSim3, NonCorrectedSim3;
     CorrectedSim3[mpCurrentKF]=mg2oScw;
     cv::Mat Twc = mpCurrentKF->GetPoseInverse();
-
+    /* 
+        camera pose Tiw, which is a rigid body transformation that transforms points from the world to the camera
+        coordinate system
+        Twc 是当前帧 world 2 cams 的变换 下面的推到都不对 是反过来的  Twc是 cam to world 
+        Tiw 是与当前帧相关的第i帧 cam to world的变换 那么 Tic = Tiw * Twc 就是第i帧 到 当前帧的变换矩阵
+        然后 mg2oScw 是当前帧 sim3 后的 pose 也就是 cam to world的pose 所以 g2oCorrectedSiw 就是校准后更新的 第i帧的pose 
+    */
 
     {
         // Get Map Mutex
@@ -448,14 +457,14 @@ void LoopClosing::CorrectLoop()
         {
             KeyFrame* pKFi = *vit;
 
-            cv::Mat Tiw = pKFi->GetPose();
+            cv::Mat Tiw = pKFi->GetPose(); // cams to world
 
             if(pKFi!=mpCurrentKF)
             {
                 cv::Mat Tic = Tiw*Twc;
                 cv::Mat Ric = Tic.rowRange(0,3).colRange(0,3);
                 cv::Mat tic = Tic.rowRange(0,3).col(3);
-                g2o::Sim3 g2oSic(Converter::toMatrix3d(Ric),Converter::toVector3d(tic),1.0);
+                g2o::Sim3 g2oSic(Converter::toMatrix3d(Ric),Converter::toVector3d(tic),1.0);  // Tic 转为G2o的格式
                 g2o::Sim3 g2oCorrectedSiw = g2oSic*mg2oScw;
                 //Pose corrected with the Sim3 of the loop closure
                 CorrectedSim3[pKFi]=g2oCorrectedSiw;
@@ -468,6 +477,7 @@ void LoopClosing::CorrectLoop()
             NonCorrectedSim3[pKFi]=g2oSiw;
         }
 
+        // 纠正当前关键帧和邻居观察到的所有 MapPoint，以便它们与循环的另一侧对齐
         // Correct all MapPoints obsrved by current keyframe and neighbors, so that they align with the other side of the loop
         for(KeyFrameAndPose::iterator mit=CorrectedSim3.begin(), mend=CorrectedSim3.end(); mit!=mend; mit++)
         {
@@ -475,7 +485,7 @@ void LoopClosing::CorrectLoop()
             g2o::Sim3 g2oCorrectedSiw = mit->second;
             g2o::Sim3 g2oCorrectedSwi = g2oCorrectedSiw.inverse();
 
-            g2o::Sim3 g2oSiw =NonCorrectedSim3[pKFi];
+            g2o::Sim3 g2oSiw =NonCorrectedSim3[pKFi];  // 纠正之前的位姿 
 
             vector<MapPoint*> vpMPsi = pKFi->GetMapPointMatches();
             for(size_t iMP=0, endMPi = vpMPsi.size(); iMP<endMPi; iMP++)
@@ -485,27 +495,29 @@ void LoopClosing::CorrectLoop()
                     continue;
                 if(pMPi->isBad())
                     continue;
-                if(pMPi->mnCorrectedByKF==mpCurrentKF->mnId)
+                if(pMPi->mnCorrectedByKF==mpCurrentKF->mnId)  // 这个是说明已经处理过了
                     continue;
 
                 // Project with non-corrected pose and project back with corrected pose
                 cv::Mat P3Dw = pMPi->GetWorldPos();
                 Eigen::Matrix<double,3,1> eigP3Dw = Converter::toVector3d(P3Dw);
+                // 下面就是 先用矫正前的位姿 恢复为 3D点 然后再用矫正后的位姿 投影到第 i个相机的坐标系
                 Eigen::Matrix<double,3,1> eigCorrectedP3Dw = g2oCorrectedSwi.map(g2oSiw.map(eigP3Dw));
 
-                cv::Mat cvCorrectedP3Dw = Converter::toCvMat(eigCorrectedP3Dw);
+                cv::Mat cvCorrectedP3Dw = Converter::toCvMat(eigCorrectedP3Dw); // 转为cv的格式
                 pMPi->SetWorldPos(cvCorrectedP3Dw);
                 pMPi->mnCorrectedByKF = mpCurrentKF->mnId;
                 pMPi->mnCorrectedReference = pKFi->mnId;
-                pMPi->UpdateNormalAndDepth();
+                pMPi->UpdateNormalAndDepth(); // 更新深度和normal
             }
 
+            // 在下面这个实际更新了相关帧的pose 但是为什么要更新 sim3 to SE3啊？
             // Update keyframe pose with corrected Sim3. First transform Sim3 to SE3 (scale translation)
             Eigen::Matrix3d eigR = g2oCorrectedSiw.rotation().toRotationMatrix();
             Eigen::Vector3d eigt = g2oCorrectedSiw.translation();
             double s = g2oCorrectedSiw.scale();
 
-            eigt *=(1./s); //[R t/s;0 1]
+            eigt *=(1./s); //[R t/s;0 1]  // 为什么这里要用 SE3 去更新 pose呢？
 
             cv::Mat correctedTiw = Converter::toCvSE3(eigR,eigt);
 
@@ -572,7 +584,7 @@ void LoopClosing::CorrectLoop()
     mpMatchedKF->AddLoopEdge(mpCurrentKF);
     mpCurrentKF->AddLoopEdge(mpMatchedKF);
 
-    // Launch a new thread to perform Global Bundle Adjustment
+    // Launch a new thread to perform Global Bundle Adjustment   global 是主要的
     mbRunningGBA = true;
     mbFinishedGBA = false;
     mbStopGBA = false;
@@ -698,7 +710,7 @@ void LoopClosing::RunGlobalBundleAdjustment(unsigned long nLoopKF)
                 pKF->SetPose(pKF->mTcwGBA);
                 lpKFtoCheck.pop_front();
             }
-
+ 
             // Correct MapPoints
             const vector<MapPoint*> vpMPs = mpMap->GetAllMapPoints();
 

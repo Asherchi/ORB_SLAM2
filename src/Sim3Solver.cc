@@ -227,6 +227,7 @@ void Sim3Solver::ComputeSim3(cv::Mat &P1, cv::Mat &P2)
 {
     // Custom implementation of:
     // Horn 1987, Closed-form solution of absolute orientataion using unit quaternions
+    // https://aitechtogether.com/article/38672.html
 
     // Step 1: Centroid and relative coordinates
 

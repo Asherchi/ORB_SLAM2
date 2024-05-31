@@ -86,13 +86,13 @@ void KeyFrame::SetPose(const cv::Mat &Tcw_)
 cv::Mat KeyFrame::GetPose()
 {
     unique_lock<mutex> lock(mMutexPose);
-    return Tcw.clone();
+    return Tcw.clone();  // 正常的变换是 cams to world 
 }
 
 cv::Mat KeyFrame::GetPoseInverse()
 {
     unique_lock<mutex> lock(mMutexPose);
-    return Twc.clone();
+    return Twc.clone();  // 那么逆的话 就是 world to cams 
 }
 
 cv::Mat KeyFrame::GetCameraCenter()
